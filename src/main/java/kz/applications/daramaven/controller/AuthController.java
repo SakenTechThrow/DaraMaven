@@ -4,12 +4,9 @@ import jakarta.validation.Valid;
 import kz.applications.daramaven.dto.AuthResponse;
 import kz.applications.daramaven.dto.LoginRequest;
 import kz.applications.daramaven.dto.RegisterRequest;
-import kz.applications.daramaven.dto.UserResponse;
 import kz.applications.daramaven.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -25,16 +22,5 @@ public class AuthController {
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest request){
         return authService.login(request);
-    }
-
-    @GetMapping("/getAll")
-    public List<UserResponse> getAllUsers(){
-        return authService.getAllUsers();
-    }
-    @DeleteMapping("/delete/{id}")
-    public String deleteUser(@PathVariable Long id) {
-        authService.deleteUser(id);
-        return "User deleted successfully";
-
     }
 }
