@@ -2,21 +2,26 @@ package kz.applications.daramaven.service;
 
 import kz.applications.daramaven.dto.*;
 import kz.applications.daramaven.entity.User;
+import kz.applications.daramaven.repository.UserProfileRepository;
 import kz.applications.daramaven.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserProfileRepository userProfileRepository;
 
     public User getCurrentUser(){
         String email = SecurityContextHolder
@@ -68,11 +73,11 @@ public class UserService {
         userRepository.save(user);
         return "Password changed successfully";
     }
-    public List<UserResponse> getAllUsersForAdmin(){
-        return userRepository.findAll()
-                .stream()
-                .map(this::mapToUserResponse)
-                .toList();
+    public Page<UserResponse> getAllUsersForAdmin(int page, int size){
+        Pageable pageable = PageRequest.of(page, size);
+
+        return userRepository.findAll(pageable)
+                .map(this::mapToUserResponse);
     }
     public UserResponse getUserByIdForAdmin(Long id) {
         User user = findUserById(id);
@@ -110,6 +115,7 @@ public class UserService {
         return mapToUserResponse(savedUser);
     }
 
+    @Transactional
     public String deleteUserForAdmin(Long id){
         User currentAdmin = getCurrentUser();
         User userToDelete = findUserById(id);
@@ -130,6 +136,10 @@ public class UserService {
                         "Cannot delete the last admin"
                 );
             }
+        }
+
+        if (userProfileRepository.existsByUserId(userToDelete.getId())){
+            userProfileRepository.deleteByUserId(userToDelete.getId());
         }
 
         userRepository.delete(userToDelete);

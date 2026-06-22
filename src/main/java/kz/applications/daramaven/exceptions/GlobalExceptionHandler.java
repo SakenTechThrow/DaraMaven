@@ -45,8 +45,11 @@ public class GlobalExceptionHandler {
                 .body(error);
     }
 
+    @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, Object>> handleDataIntegrityViolationException(DataIntegrityViolationException ex){
         Map<String, Object> error = new HashMap<>();
+
+        ex.printStackTrace();
 
         error.put("timestamp", LocalDateTime.now());
         error.put("status", HttpStatus.BAD_REQUEST.value());
@@ -61,6 +64,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleGeneralException(Exception ex){
         Map<String, Object> error = new HashMap<>();
 
+        ex.printStackTrace();
+
         error.put("timestamp", LocalDateTime.now());
         error.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
         error.put("error", "Internal server error");
@@ -69,6 +74,4 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(error);
     }
-
-
 }

@@ -1,6 +1,8 @@
 package kz.applications.daramaven.controller;
 
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.web.bind.annotation.RequestParam;
 import kz.applications.daramaven.dto.UpdateUserRoleRequest;
 import kz.applications.daramaven.dto.UpdateUserStatusRequest;
 import kz.applications.daramaven.dto.UserResponse;
@@ -8,7 +10,6 @@ import kz.applications.daramaven.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/users")
@@ -17,8 +18,11 @@ public class AdminUserController {
     private final UserService userService;
 
     @GetMapping
-    public List<UserResponse> getAllUsers(){
-        return userService.getAllUsersForAdmin();
+    public Page<UserResponse> getAllUsers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ){
+        return userService.getAllUsersForAdmin(page, size);
     }
 
     @GetMapping("/{id}")
