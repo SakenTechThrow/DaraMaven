@@ -1,5 +1,6 @@
 package kz.applications.daramaven.controller;
 
+import kz.applications.daramaven.dto.ApiResponse;
 import kz.applications.daramaven.dto.CreateProfileRequest;
 import kz.applications.daramaven.dto.ProfileResponse;
 import kz.applications.daramaven.dto.UpdateProfileRequest;
@@ -29,8 +30,9 @@ public class UserProfileController {
     }
 
     @DeleteMapping
-    public String deleteMyProfile(){
-        return userProfileService.deleteMyProfile();
+    public ApiResponse<Void> deleteMyProfile(){
+        String message = userProfileService.deleteMyProfile();
+        return ApiResponse.success(message);
     }
 
 }

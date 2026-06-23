@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: daramaven-postgres
+    environment:
+      POSTGRES_DB: daramaven_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+    ports:
+      - "5433:5432"
+    volumes:
+      - daramaven_postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    container_name: daramaven-app
+    depends_on:
+      - postgres
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/daramaven_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: 1234
+      JWT_SECRET: ThisIsASecretKeyForDaraMavenProjectThisIsASecretKey
+      JWT_ACCESS_EXPIRATION: 900000
+      JWT_REFRESH_EXPIRATION: 604800000
+
+volumes:
+  daramaven_postgres_data:

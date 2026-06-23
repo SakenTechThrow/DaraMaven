@@ -8,12 +8,20 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import jakarta.persistence.criteria.Predicate;
 
 
 @Service
@@ -22,6 +30,9 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final UserProfileRepository userProfileRepository;
+    private final RefreshTokenService refreshTokenService;
+    private final AuditLogService auditLogService;
+    private final RestClient.Builder builder;
 
     public User getCurrentUser(){
         String email = SecurityContextHolder
@@ -71,13 +82,80 @@ public class UserService {
         }
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+
+        auditLogService.log(
+                user,
+                "PASSWORD_CHANGED",
+                "USER",
+                user.getId(),
+                "User changed password"
+        );
+
         return "Password changed successfully";
     }
-    public Page<UserResponse> getAllUsersForAdmin(int page, int size){
-        Pageable pageable = PageRequest.of(page, size);
+    public PageResponse<UserResponse> getAllUsersForAdmin(
+            int page,
+            int size,
+            String email,
+            String role,
+            Boolean active,
+            Boolean deleted,
+            String sortBy,
+            String sortDirection
+    ){
+        Sort.Direction direction = "asc".equalsIgnoreCase(sortDirection)
+                ? Sort.Direction.ASC
+                : Sort.Direction.DESC;
 
-        return userRepository.findAll(pageable)
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(direction, sortBy)
+        );
+
+        Specification<User> specification = (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (email != null && !email.isBlank()){
+                predicates.add(
+                        criteriaBuilder.like(
+                                criteriaBuilder.lower(root.get("email")),
+                                "%" + email.toLowerCase() + "%"
+                        )
+                );
+            }
+            if (role != null && !role.isBlank()){
+                predicates.add(
+                        criteriaBuilder.equal(root.get("role"), role)
+                );
+            }
+
+            if (active != null){
+                predicates.add(
+                        criteriaBuilder.equal(root.get("active"), active)
+                );
+            }
+
+            if (deleted != null){
+                predicates.add(
+                        criteriaBuilder.equal(root.get("deleted"), deleted)
+                );
+            }
+            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<UserResponse> usersPage = userRepository.findAll(specification, pageable)
                 .map(this::mapToUserResponse);
+
+        return PageResponse.<UserResponse>builder()
+                .content(usersPage.getContent())
+                .page(usersPage.getNumber())
+                .size(usersPage.getSize())
+                .totalElements(usersPage.getTotalElements())
+                .totalPage(usersPage.getTotalPages())
+                .last(usersPage.isLast())
+                .build();
+
     }
     public UserResponse getUserByIdForAdmin(Long id) {
         User user = findUserById(id);
@@ -85,6 +163,8 @@ public class UserService {
     }
     public UserResponse updateUserRole(Long id, UpdateUserRoleRequest request){
         User user = findUserById(id);
+        User currentAdmin = getCurrentUser();
+        String oldRole = user.getRole();
 
         String newRole = request.getRole();
         if (!"USER".equals(newRole) && !"ADMIN".equals(newRole)){
@@ -105,6 +185,17 @@ public class UserService {
         }
         user.setRole(newRole);
         User savedUser = userRepository.save(user);
+
+        auditLogService.log(
+                currentAdmin,
+                "USER_ROLE_CHANGED",
+                "USER",
+                savedUser.getId(),
+                "Changed role from " + oldRole + " to " + newRole+" for user "+savedUser.getEmail()
+
+        );
+
+
         return mapToUserResponse(savedUser);
     }
 
@@ -126,6 +217,12 @@ public class UserService {
                     "Admin cannot delete himself"
             );
         }
+        if (Boolean.TRUE.equals(userToDelete.getDeleted())){
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "User already deleted"
+            );
+        }
 
         if ("ADMIN".equals(userToDelete.getRole())){
             long adminCount = userRepository.countByRole("ADMIN");
@@ -138,13 +235,137 @@ public class UserService {
             }
         }
 
-        if (userProfileRepository.existsByUserId(userToDelete.getId())){
-            userProfileRepository.deleteByUserId(userToDelete.getId());
+        userToDelete.setDeleted(true);
+        userToDelete.setDeletedAt(LocalDateTime.now());
+
+        userToDelete.setActive(false);
+
+        userRepository.save(userToDelete);
+
+        refreshTokenService.revokeAllTokensByUser(userToDelete);
+
+        auditLogService.log(
+                currentAdmin,
+                "USER_SOFT_DELETED",
+                "USER",
+                userToDelete.getId(),
+                "Admin soft deleted user: " + userToDelete.getEmail()
+        );
+
+        return "User soft deleted successfully";
+    }
+
+    @Transactional
+    public UserResponse restoreUserForAdmin(Long id){
+        User user = findUserById(id);
+        User currentAdmin = getCurrentUser();
+
+        if (!Boolean.TRUE.equals(user.getDeleted())){
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "User is not deleted"
+            );
         }
 
-        userRepository.delete(userToDelete);
-        return "User deleted successfully";
+        user.setDeleted(false);
+        user.setDeletedAt(null);
+        user.setActive(true);
+
+        User restoredUser = userRepository.save(user);
+
+        auditLogService.log(
+                currentAdmin,
+                "USER_RESTORED",
+                "USER",
+                restoredUser.getId(),
+                "Admin restored user: " + restoredUser.getEmail()
+        );
+
+
+        return mapToUserResponse(restoredUser);
+
     }
+
+    @Transactional
+    public UserResponse blockUserForAdmin(Long id, BlockUserRequest request){
+        User currentAdmin = getCurrentUser();
+        User userToBlock = findUserById(id);
+
+        if (currentAdmin.getId().equals(userToBlock.getId())){
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Admin cannot block himself"
+            );
+        }
+
+        if (Boolean.TRUE.equals(userToBlock.getDeleted())){
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Cannot block deleted user"
+            );
+        }
+
+        if (!userToBlock.getActive()){
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "User is already blocked"
+            );
+        }
+
+        userToBlock.setActive(false);
+        userToBlock.setBlockedReason(request.getReason());
+        userToBlock.setBlockedAt(LocalDateTime.now());
+
+        User blockedUser = userRepository.save(userToBlock);
+
+        refreshTokenService.revokeAllTokensByUser(userToBlock);
+
+        auditLogService.log(
+                currentAdmin,
+                "USER_BLOCKED",
+                "USER",
+                blockedUser.getId(),
+                "Admin blocked user " + blockedUser.getEmail() + ". Reason: " + request.getReason()
+        );
+
+        return mapToUserResponse(blockedUser);
+    }
+
+    @Transactional
+    public UserResponse unblockUserForAdmin(Long id){
+        User userToUnblock = findUserById(id);
+        User currentAdmin = getCurrentUser();
+
+        if (Boolean.TRUE.equals(userToUnblock.getDeleted())){
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Cannot unblock deleted user. Restore user first"
+            );
+        }
+        if (Boolean.TRUE.equals(userToUnblock.getActive())){
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "User is already active"
+            );
+        }
+
+        userToUnblock.setActive(true);
+        userToUnblock.setBlockedReason(null);
+        userToUnblock.setBlockedAt(null);
+
+        User unblockedUser = userRepository.save(userToUnblock);
+
+        auditLogService.log(
+                currentAdmin,
+                "USER_UNBLOCKED",
+                "USER",
+                unblockedUser.getId(),
+                "Admin unblocked user: " + unblockedUser.getEmail()
+        );
+
+        return mapToUserResponse(unblockedUser);
+    }
+
     private User findUserById(Long id){
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
@@ -159,6 +380,10 @@ public class UserService {
                 .email(user.getEmail())
                 .role(user.getRole())
                 .active(user.getActive())
+                .deleted(user.getDeleted())
+                .deletedAt(user.getDeletedAt())
+                .blockedReason(user.getBlockedReason())
+                .blockedAt(user.getBlockedAt())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .build();

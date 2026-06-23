@@ -1,6 +1,7 @@
 package kz.applications.daramaven.controller;
 
 import jakarta.validation.Valid;
+import kz.applications.daramaven.dto.ApiResponse;
 import kz.applications.daramaven.dto.ChangePasswordRequest;
 import kz.applications.daramaven.dto.UpdateUserRequest;
 import kz.applications.daramaven.dto.UserResponse;
@@ -25,7 +26,8 @@ public class UserController {
     }
 
     @PatchMapping("/me/password")
-    public String changePassword(@Valid @RequestBody ChangePasswordRequest request){
-        return userService.changePassword(request);
+    public ApiResponse<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request){
+        String message = userService.changePassword(request);
+        return ApiResponse.success(message);
     }
 }

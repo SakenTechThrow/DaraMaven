@@ -14,4 +14,8 @@ public class UserResponse {
     private Boolean active;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Boolean deleted;
+    private LocalDateTime deletedAt;
+    private String blockedReason;
+    private LocalDateTime blockedAt;
 }

@@ -16,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class UserProfileService {
     private final UserProfileRepository userProfileRepository;
     private final UserService userService;
+    private final AuditLogService auditLogService;
 
     public ProfileResponse createMyProfile(CreateProfileRequest request){
         User user = userService.getCurrentUser();
@@ -36,6 +37,15 @@ public class UserProfileService {
                 .bio(request.getBio())
                 .build();
         UserProfile savedProfile = userProfileRepository.save(profile);
+
+        auditLogService.log(
+                user,
+                "PROFILE_CREATED",
+                "PROFILE",
+                savedProfile.getId(),
+                "User created profile"
+        );
+
         return mapToProfileResponse(savedProfile);
     }
     public ProfileResponse getMyProfile(){
@@ -60,19 +70,39 @@ public class UserProfileService {
         updateProfileFields(profile, request);
 
         UserProfile savedProfile = userProfileRepository.save(profile);
+
+        auditLogService.log(
+                user,
+                "PROFILE_UPDATED",
+                "PROFILE",
+                savedProfile.getId(),
+                "User updated profile"
+        );
+
         return mapToProfileResponse(savedProfile);
     }
 
     public String deleteMyProfile(){
         User user = userService.getCurrentUser();
-        if (!userProfileRepository.existsByUserId(user.getId())){
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Profile not found"
-            );
-        }
 
-        userProfileRepository.deleteByUserId(user.getId());
+       UserProfile profile = userProfileRepository.findByUserId(user.getId())
+                       .orElseThrow(()-> new ResponseStatusException(
+                               HttpStatus.NOT_FOUND,
+                               "Profile not found"
+                       ));
+
+       Long profileId = profile.getId();
+
+       userProfileRepository.delete(profile);
+
+        auditLogService.log(
+                user,
+                "PROFILE_DELETED",
+                "PROFILE",
+                profileId,
+                "User deleted profile"
+        );
+
         return "Profile deleted successfully";
     }
     public ProfileResponse getProfileByUserIdForAdmin(Long userId){
@@ -85,6 +115,8 @@ public class UserProfileService {
     }
 
     public ProfileResponse updateProfileByUserIdForAdmin(Long userId, UpdateProfileRequest request){
+        User currentAdmin = userService.getCurrentUser();
+
         UserProfile profile = userProfileRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
@@ -92,6 +124,15 @@ public class UserProfileService {
                 ));
         updateProfileFields(profile, request);
         UserProfile savedProfile = userProfileRepository.save(profile);
+
+        auditLogService.log(
+                currentAdmin,
+                "PROFILE_UPDATED_BY_ADMIN",
+                "PROFILE",
+                savedProfile.getId(),
+                "Admin updated profile of userId: " + userId
+        );
+
         return mapToProfileResponse(savedProfile);
     }
 
