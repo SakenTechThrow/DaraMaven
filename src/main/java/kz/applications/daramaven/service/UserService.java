@@ -32,7 +32,6 @@ public class UserService {
     private final UserProfileRepository userProfileRepository;
     private final RefreshTokenService refreshTokenService;
     private final AuditLogService auditLogService;
-    private final RestClient.Builder builder;
 
     public User getCurrentUser(){
         String email = SecurityContextHolder
