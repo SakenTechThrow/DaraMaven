@@ -91,7 +91,7 @@ public class UserProfileServiceTest {
         );
 
     }
-
+    @Test
     void createMyProfile_shouldThrowException_whenProfileAlreadyExists() {
         User user = User.builder()
                 .id(1L)

@@ -45,7 +45,7 @@ public class UserServiceTest {
     private UserService userService;
 
     @Test
-    void changePassword_shouldChangePassword_whenOldPasswordIsCorrect(){
+        void changePassword_shouldChangePassword_whenOldPasswordIsCorrect(){
         User user = User.builder()
                 .id(1L)
                 .email("user@mail.com")

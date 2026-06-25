@@ -272,7 +272,7 @@ class AuthServiceTest {
                 .email("user@mail.com")
                 .password("encoded-password")
                 .role("USER")
-                .active(false)
+                    .active(false)
                 .deleted(false)
                 .build();
 
