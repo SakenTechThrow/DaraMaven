@@ -151,7 +151,7 @@ public class UserService {
                 .page(usersPage.getNumber())
                 .size(usersPage.getSize())
                 .totalElements(usersPage.getTotalElements())
-                .totalPage(usersPage.getTotalPages())
+                .totalPages(usersPage.getTotalPages())
                 .last(usersPage.isLast())
                 .build();
 

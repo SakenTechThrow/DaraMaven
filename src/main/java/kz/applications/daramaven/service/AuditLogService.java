@@ -10,7 +10,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import jakarta.persistence.criteria.Predicate;
 
 @Service
 @RequiredArgsConstructor
@@ -59,10 +67,63 @@ public class AuditLogService {
         auditLogRepository.save(auditLog);
     }
 
-    public PageResponse<AuditLogResponse> getAuditLogsForAdmin(int page, int size){
-        Pageable pageable = PageRequest.of(page, size);
+    public PageResponse<AuditLogResponse> getAuditLogsForAdmin(
+            int page,
+            int size,
+            String action,
+            String actorEmail,
+            String targetType,
+            Long targetId,
+            LocalDateTime dateFrom,
+            LocalDateTime dateTo
+            ){
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.DESC, "createdAt")
+                );
 
-        Page<AuditLogResponse> auditLogsPage = auditLogRepository.findAll(pageable)
+        Specification<AuditLog> specification = (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (action!=null && !action.isBlank()){
+                predicates.add(
+                        criteriaBuilder.equal(root.get("action"), action)
+                );
+            }
+            if (actorEmail != null && !actorEmail.isBlank()){
+                predicates.add(
+                        criteriaBuilder.like(
+                                criteriaBuilder.lower(root.get("actorEmail")),
+                                "%" + actorEmail.toLowerCase() + "%"
+                        )
+                );
+            }
+
+            if (targetType != null && !targetType.isBlank()){
+                predicates.add(
+                        criteriaBuilder.equal(root.get("targetType"), targetType)
+                );
+            }
+
+            if (targetId != null){
+                predicates.add(
+                        criteriaBuilder.equal(root.get("targetId"), targetId)
+                );
+            }
+            if (dateFrom != null){
+                predicates.add(
+                        criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), dateFrom)
+                );
+            }
+            if (dateTo != null){
+                predicates.add(
+                        criteriaBuilder.lessThanOrEqualTo(root.get("createdAt"), dateTo)
+                );
+            }
+            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+        };
+        Page<AuditLogResponse> auditLogsPage = auditLogRepository.findAll(specification, pageable)
                 .map(this::mapToAuditLogResponse);
 
         return PageResponse.<AuditLogResponse>builder()
@@ -70,6 +131,7 @@ public class AuditLogService {
                 .page(auditLogsPage.getNumber())
                 .size(auditLogsPage.getSize())
                 .totalElements(auditLogsPage.getTotalElements())
+                .totalPages(auditLogsPage.getTotalPages())
                 .last(auditLogsPage.isLast())
                 .build();
     }
